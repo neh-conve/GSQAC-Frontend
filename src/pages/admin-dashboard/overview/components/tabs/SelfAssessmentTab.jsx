@@ -52,7 +52,7 @@ export function SchoolSelfAssessmentStatusSection({
           <p className="ado-section-desc">
             {districtId
               ? `Of ${totalSchools} schools in ${scopeName} · ${requiredLabel}`
-              : `Of ${totalSchools} schools with a login · select a district for the full school list · ${requiredLabel}`}
+              : `Of ${totalSchools} active schools · select a district for the full school list · ${requiredLabel}`}
           </p>
         </div>
         {hasData && (
@@ -67,7 +67,11 @@ export function SchoolSelfAssessmentStatusSection({
           <StatCard
             label="Total Schools"
             value={totalSchools}
-            sub={districtId ? "Active school users in this district" : "Active school users statewide (user_master)"}
+            sub={
+              districtId
+                ? "Active schools in this district (in school_master)"
+                : "Active schools statewide (in school_master)"
+            }
             tone="indigo"
             icon={ICONS.schools}
           />

@@ -227,6 +227,63 @@ export function getDomainMandatoryEvidenceProgress(domain) {
   };
 }
 
+export function mergeEvidenceAdjustmentsIntoDomains(
+  domains = [],
+  adjustmentsBySubdomain = {},
+) {
+  if (!Array.isArray(domains)) return [];
+  if (!adjustmentsBySubdomain || !Object.keys(adjustmentsBySubdomain).length) {
+    return domains;
+  }
+
+  return domains.map((domain) => ({
+    ...domain,
+    subDomain: (domain.subDomain || []).map((subdomain) => {
+      const subDomainId = subdomain.subDomainId || subdomain.id;
+      const adjustments =
+        adjustmentsBySubdomain[subDomainId] ||
+        adjustmentsBySubdomain[String(subDomainId)];
+      if (!adjustments || !Object.keys(adjustments).length) return subdomain;
+      return {
+        ...subdomain,
+        evidenceAnswerAdjustments: adjustments,
+      };
+    }),
+  }));
+}
+
+export function mergeEvidenceAdjustmentsIntoAssessments(
+  assessments = [],
+  adjustmentsBySubdomain = {},
+) {
+  return (assessments || []).map((assessment) => ({
+    ...assessment,
+    domains: mergeEvidenceAdjustmentsIntoDomains(
+      assessment.domains || [],
+      adjustmentsBySubdomain,
+    ),
+  }));
+}
+
+export function buildEvidenceAdjustmentForQuestion(question, slots = []) {
+  if (!questionRequiresEvidence(question)) return null;
+
+  const selectedOptionId =
+    question.selectedOptionId ?? question.optionId ?? null;
+  if (!isEvidenceOptionalForSelectedOption(question, selectedOptionId)) {
+    return null;
+  }
+
+  const rawProgress = computeMandatoryEvidenceProgress(slots);
+  if (rawProgress.total <= 0) return null;
+
+  return {
+    exempt: true,
+    slotTotal: rawProgress.total,
+    slotUploaded: rawProgress.uploaded,
+  };
+}
+
 export function getAssessmentMandatoryEvidenceProgress(domains = []) {
   let total = 0;
   let uploaded = 0;

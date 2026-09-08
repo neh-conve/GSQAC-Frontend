@@ -116,11 +116,6 @@ export function useVerifierRegistrationList() {
           render: (row) => row.email || "-",
         },
         {
-          id: "nativeDistrict",
-          label: "Native District",
-          render: (row) => row.nativeDistrictName || "-",
-        },
-        {
           id: "jobDistrict",
           label: "Job District",
           render: (row) => row.jobDistrictName || "-",

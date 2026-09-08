@@ -34,6 +34,7 @@ import {
   useGetSchoolGradesQuery,
   submitAssessment,
   fetchDomainsBypassingCache,
+  getSubdomainQuestions,
 } from "../../../../services/schoolService";
 import {
   useGetClassWiseSubjectsQuery,
@@ -62,7 +63,64 @@ import {
   getAssessmentMandatoryEvidenceProgress,
   sanitizeDomainsEvidence,
   updateDomainsCacheSubdomainEvidence,
+  mergeEvidenceAdjustmentsIntoAssessments,
+  buildEvidenceAdjustmentForQuestion,
+  questionRequiresEvidence,
+  getSubdomainEvidenceProgress,
+  getQuestionEvidence,
 } from "../../../../services/evidenceService";
+
+function extractSubdomainQuestions(response) {
+  const payload = response?.data?.data ?? response?.data ?? response ?? [];
+  return Array.isArray(payload) ? payload : [];
+}
+
+function normalizeAssessmentsFromDomainsPayload(domainsData, hostelValue, t) {
+  let list = [];
+  if (Array.isArray(domainsData?.data)) {
+    const isMultiAssessmentPayload =
+      domainsData.data.length > 0 &&
+      domainsData.data.every(
+        (item) => item && Object.prototype.hasOwnProperty.call(item, "assessmentId"),
+      );
+
+    if (isMultiAssessmentPayload) {
+      list = domainsData.data.map((assessment) => ({
+        ...assessment,
+        domains: Array.isArray(assessment.domains) ? assessment.domains : [],
+      }));
+    } else if (domainsData.data.length > 0) {
+      list = [
+        {
+          assessmentId: null,
+          assessmentName: t("selfAssessment.defaultAssessmentName", {
+            defaultValue: "Assessment",
+          }),
+          domains: domainsData.data,
+          academicYear: domainsData?.academicYear,
+          round: domainsData?.round,
+          isPublished: domainsData?.isPublished,
+          startDate: domainsData?.startDate,
+          endDate: domainsData?.endDate,
+          isSubmitted: domainsData?.isSubmitted,
+          sessionId: domainsData?.sessionId,
+        },
+      ];
+    }
+  }
+
+  return filterAssessmentsByHostelFacility(list, hostelValue).map((assessment) => ({
+    ...assessment,
+    ...resolveAssessmentPeriod({
+      academicYear: assessment.academicYear || domainsData?.academicYear,
+      round: assessment.round ?? domainsData?.round,
+    }),
+    answerPercentage: clampProgressPercentage(assessment.answerPercentage),
+    domains: sanitizeDomainsProgress(
+      sanitizeDomainsEvidence(assessment.domains || []),
+    ),
+  }));
+}
 
 const getSessionIdFromDomainsResponse = (domainsResponse, assessmentId) => {
   if (!domainsResponse) return null;
@@ -144,6 +202,7 @@ export function useSelfAssessment() {
   /** Optimistic કક્ષા 0/4 evidence exemptions: { [subDomainId]: { [questionId]: { exempt, slotTotal, slotUploaded } } } */
   const [evidenceAnswerAdjustmentsBySubdomain, setEvidenceAnswerAdjustmentsBySubdomain] =
     useState({});
+  const evidenceHydrationRef = useRef(new Set());
   const [chartDrilldownAssessmentId, setChartDrilldownAssessmentId] =
     useState(null);
 
@@ -398,52 +457,109 @@ export function useSelfAssessment() {
 
   // Note: Removed auto-selection of subject to allow manual selection only
 
-  const assessments = useMemo(() => {
-    let list = [];
-    if (Array.isArray(domainsData?.data)) {
-      const isMultiAssessmentPayload =
-        domainsData.data.length > 0 &&
-        domainsData.data.every(
-          (item) => item && Object.prototype.hasOwnProperty.call(item, "assessmentId"),
+  const assessments = useMemo(
+    () => normalizeAssessmentsFromDomainsPayload(domainsData, hostelValue, t),
+    [domainsData, hostelValue, t],
+  );
+
+  const assessmentsWithEvidenceAdjustments = useMemo(
+    () =>
+      mergeEvidenceAdjustmentsIntoAssessments(
+        assessments,
+        evidenceAnswerAdjustmentsBySubdomain,
+      ),
+    [assessments, evidenceAnswerAdjustmentsBySubdomain],
+  );
+
+  // Pre-compute કક્ષા 0/4 evidence exemptions so sidebar progress is correct
+  // before the user expands each domain/subdomain.
+  useEffect(() => {
+    if (!assessments.length || !userId || !userName || isLoadingDomains) return;
+
+    let cancelled = false;
+    const lang = languageCode || "EN";
+
+    const hydrateSubdomainEvidenceAdjustments = async (subDomainId) => {
+      const key = String(subDomainId);
+      if (evidenceHydrationRef.current.has(key)) return;
+      evidenceHydrationRef.current.add(key);
+
+      try {
+        const questionsResponse = await getSubdomainQuestions({
+          subDomainId,
+          roleId,
+          languageCode: lang,
+          userId: Number(userId),
+        });
+        const questions = extractSubdomainQuestions(questionsResponse);
+        const adjustments = {};
+
+        await Promise.all(
+          questions.map(async (question) => {
+            if (!questionRequiresEvidence(question)) return;
+            const evidenceResponse = await getQuestionEvidence({
+              questionId: question.questionId,
+              schoolId: userName,
+              languageCode: lang,
+            });
+            const slots =
+              evidenceResponse?.data?.slots ||
+              evidenceResponse?.slots ||
+              [];
+            const adjustment = buildEvidenceAdjustmentForQuestion(
+              question,
+              slots,
+            );
+            if (adjustment) {
+              adjustments[String(question.questionId)] = adjustment;
+            }
+          }),
         );
 
-      if (isMultiAssessmentPayload) {
-        list = domainsData.data.map((assessment) => ({
-          ...assessment,
-          domains: Array.isArray(assessment.domains) ? assessment.domains : [],
-        }));
-      } else if (domainsData.data.length > 0) {
-        list = [
-          {
-            assessmentId: null,
-            assessmentName: t("selfAssessment.defaultAssessmentName", {
-              defaultValue: "Assessment",
-            }),
-            domains: domainsData.data,
-            academicYear: domainsData?.academicYear,
-            round: domainsData?.round,
-            isPublished: domainsData?.isPublished,
-            startDate: domainsData?.startDate,
-            endDate: domainsData?.endDate,
-            isSubmitted: domainsData?.isSubmitted,
-            sessionId: domainsData?.sessionId,
-          },
-        ];
-      }
-    }
+        if (cancelled || !Object.keys(adjustments).length) return;
 
-    return filterAssessmentsByHostelFacility(list, hostelValue).map((assessment) => ({
-      ...assessment,
-      ...resolveAssessmentPeriod({
-        academicYear: assessment.academicYear || domainsData?.academicYear,
-        round: assessment.round ?? domainsData?.round,
-      }),
-      answerPercentage: clampProgressPercentage(assessment.answerPercentage),
-      domains: sanitizeDomainsProgress(
-        sanitizeDomainsEvidence(assessment.domains || []),
-      ),
-    }));
-  }, [domainsData, hostelValue, t]);
+        setEvidenceAnswerAdjustmentsBySubdomain((prev) => ({
+          ...prev,
+          [key]: {
+            ...(prev[key] || prev[subDomainId] || {}),
+            ...adjustments,
+          },
+        }));
+      } catch (error) {
+        evidenceHydrationRef.current.delete(key);
+        console.warn("Evidence adjustment hydration failed:", subDomainId, error);
+      }
+    };
+
+    const pendingSubdomainIds = [];
+    assessments.forEach((assessment) => {
+      (assessment.domains || []).forEach((domain) => {
+        (domain.subDomain || []).forEach((subdomain) => {
+          const subDomainId = subdomain.subDomainId || subdomain.id;
+          if (!subDomainId) return;
+          const progress = getSubdomainEvidenceProgress(subdomain);
+          if (progress.total > 0 && !progress.isComplete) {
+            pendingSubdomainIds.push(subDomainId);
+          }
+        });
+      });
+    });
+
+    pendingSubdomainIds.forEach((subDomainId) => {
+      hydrateSubdomainEvidenceAdjustments(subDomainId);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    assessments,
+    userId,
+    userName,
+    roleId,
+    languageCode,
+    isLoadingDomains,
+  ]);
 
   useEffect(() => {
     if (!assessments.length) {
@@ -473,26 +589,13 @@ export function useSelfAssessment() {
   );
 
   const domains = useMemo(() => {
-    const raw = selectedAssessment?.domains || [];
-    if (!raw.length) return raw;
-
-    return raw.map((domain) => ({
-      ...domain,
-      subDomain: (domain.subDomain || []).map((subdomain) => {
-        const subDomainId = subdomain.subDomainId || subdomain.id;
-        const adjustments =
-          evidenceAnswerAdjustmentsBySubdomain[subDomainId] ||
-          evidenceAnswerAdjustmentsBySubdomain[String(subDomainId)];
-        if (!adjustments || !Object.keys(adjustments).length) {
-          return subdomain;
-        }
-        return {
-          ...subdomain,
-          evidenceAnswerAdjustments: adjustments,
-        };
-      }),
-    }));
-  }, [selectedAssessment?.domains, evidenceAnswerAdjustmentsBySubdomain]);
+    if (!assessmentsWithEvidenceAdjustments.length) return [];
+    const selected =
+      assessmentsWithEvidenceAdjustments.find(
+        (a) => Number(a.assessmentId) === Number(selectedAssessmentId),
+      ) || assessmentsWithEvidenceAdjustments[0];
+    return selected?.domains || [];
+  }, [assessmentsWithEvidenceAdjustments, selectedAssessmentId]);
 
   // Keep selected subdomain in sync with domains payload (evidence totals, adjustments).
   const resolvedSelectedSubdomain = useMemo(() => {
@@ -539,40 +642,28 @@ export function useSelfAssessment() {
     [assessments],
   );
 
-  const allAssessmentsMandatoryEvidenceProgress = useMemo(() => {
-    const allDomains = assessments.flatMap((assessment) => {
-      if (
-        selectedAssessmentId != null &&
-        Number(assessment.assessmentId) === Number(selectedAssessmentId)
-      ) {
-        return domains;
-      }
-      return assessment.domains || [];
-    });
-    return getAssessmentMandatoryEvidenceProgress(allDomains);
-  }, [assessments, domains, selectedAssessmentId]);
+  const allAssessmentsMandatoryEvidenceProgress = useMemo(
+    () =>
+      getAssessmentMandatoryEvidenceProgress(
+        assessmentsWithEvidenceAdjustments.flatMap(
+          (assessment) => assessment.domains || [],
+        ),
+      ),
+    [assessmentsWithEvidenceAdjustments],
+  );
 
   const allAssessmentsComplete = useMemo(
     () =>
-      assessments.length > 0 &&
-      assessments.every((assessment) => {
-        if (
-          selectedAssessmentId != null &&
-          Number(assessment.assessmentId) === Number(selectedAssessmentId)
-        ) {
-          return (
-            isAssessmentAnswersComplete(assessment) &&
-            getAssessmentMandatoryEvidenceProgress(domains).isComplete
-          );
-        }
-        return isAssessmentFullyComplete(assessment);
-      }),
-    [assessments, domains, selectedAssessmentId],
+      assessmentsWithEvidenceAdjustments.length > 0 &&
+      assessmentsWithEvidenceAdjustments.every((assessment) =>
+        isAssessmentFullyComplete(assessment),
+      ),
+    [assessmentsWithEvidenceAdjustments],
   );
 
   const incompleteAssessments = useMemo(
-    () => getIncompleteAssessments(assessments),
-    [assessments],
+    () => getIncompleteAssessments(assessmentsWithEvidenceAdjustments),
+    [assessmentsWithEvidenceAdjustments],
   );
 
   const assessmentProgress = useMemo(() => {
@@ -1551,6 +1642,7 @@ export function useSelfAssessment() {
             delete next[String(subdomainId)];
             return next;
           });
+          evidenceHydrationRef.current.delete(String(subdomainId));
         }
         const domainsResult = await fetchDomainsBypassingCache({
           roleId,
@@ -1751,16 +1843,15 @@ export function useSelfAssessment() {
     setIsSubmittingAllAssessments(true);
 
     try {
-      const domainsResult = await refetchDomains();
-      const freshData = domainsResult.data;
-      let freshAssessments = assessments;
-
-      if (Array.isArray(freshData?.data) && freshData.data[0]?.domains) {
-        freshAssessments = filterAssessmentsByHostelFacility(
-          freshData.data,
-          hostelValue,
-        );
-      }
+      const domainsResult = await fetchDomainsBypassingCache({
+        roleId,
+        languageCode,
+        userId: userId ? Number(userId) : undefined,
+      });
+      const freshAssessments = mergeEvidenceAdjustmentsIntoAssessments(
+        normalizeAssessmentsFromDomainsPayload(domainsResult, hostelValue, t),
+        evidenceAnswerAdjustmentsBySubdomain,
+      );
 
       const freshEvidenceProgress = getAssessmentMandatoryEvidenceProgress(
         freshAssessments.flatMap((assessment) => assessment.domains || []),
@@ -1795,7 +1886,7 @@ export function useSelfAssessment() {
 
       for (const assessment of pendingAssessments) {
         const freshSessionId = getSessionIdFromDomainsResponse(
-          freshData,
+          domainsResult,
           assessment.assessmentId,
         );
 
