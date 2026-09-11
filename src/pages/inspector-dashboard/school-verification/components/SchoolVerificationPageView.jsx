@@ -23,6 +23,7 @@ import { AssessmentChipSelector } from "../../../../components/AssessmentChipSel
 import { AssessmentPeriodChips } from "../../../../components/AssessmentPeriodChips/AssessmentPeriodChips";
 import { SubdomainEvidencePanel } from "../../../../components/SubdomainEvidencePanel/SubdomainEvidencePanel";
 import { isEvidenceOptionalForSelectedOption } from "../../../../services/evidenceService";
+import { VerifierSubdomainConsistencyPanel } from "./VerifierSubdomainConsistencyPanel";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import "../../../school-dashboard/self-assessment/SelfAssessment.css";
 
@@ -952,8 +953,20 @@ export function SchoolVerificationPageView({ c }) {
                       {getSubdomainName(selectedSubdomain).toLowerCase()}
                     </Typography>
                   </Box>
-                  {/* Evidence uploads are per question (shown on each question with requireEvidence). */}
-                  <Box sx={{ display: "none" }} />
+                  <VerifierSubdomainConsistencyPanel
+                    subDomainId={
+                      selectedSubdomain?.subDomainId || selectedSubdomain?.id
+                    }
+                    schoolId={schoolId}
+                    assessmentId={
+                      selectedAssessment?.assessmentId ?? selectedAssessmentId ?? null
+                    }
+                    selectedAssessment={selectedAssessment}
+                    selectedSubdomain={selectedSubdomain}
+                    selectedDomain={selectedDomain}
+                    languageCode={languageCode}
+                    readOnly={isSubmitted === 1 || isSubmitted === true}
+                  />
                 </Box>
               </Box>
 
@@ -2269,6 +2282,29 @@ export function SchoolVerificationPageView({ c }) {
                                               </RadioGroup>
                                             </FormControl>
                                           )}
+
+                                          <SubdomainEvidencePanel
+                                            questionId={question.questionId}
+                                            question={question}
+                                            schoolId={schoolId}
+                                            assessmentId={
+                                              selectedAssessment?.assessmentId ??
+                                              selectedAssessmentId ??
+                                              null
+                                            }
+                                            selectedAssessment={selectedAssessment}
+                                            readOnly={
+                                              isSubmitted === 1 || isSubmitted === true
+                                            }
+                                            evidenceOptional={isEvidenceOptionalForSelectedOption(
+                                              question,
+                                              selectedAnswer,
+                                              parseOptions,
+                                            )}
+                                            variant="question"
+                                            className="verifier-subdomain-evidence"
+                                            languageCode={(languageCode || "EN").toLowerCase()}
+                                          />
                                         </CardContent>
                                       )}
                                     </Card>
@@ -2906,6 +2942,29 @@ export function SchoolVerificationPageView({ c }) {
                                             </RadioGroup>
                                           </FormControl>
                                         )}
+
+                                        <SubdomainEvidencePanel
+                                          questionId={question.questionId}
+                                          question={question}
+                                          schoolId={schoolId}
+                                          assessmentId={
+                                            selectedAssessment?.assessmentId ??
+                                            selectedAssessmentId ??
+                                            null
+                                          }
+                                          selectedAssessment={selectedAssessment}
+                                          readOnly={
+                                            isSubmitted === 1 || isSubmitted === true
+                                          }
+                                          evidenceOptional={isEvidenceOptionalForSelectedOption(
+                                            question,
+                                            selectedAnswer,
+                                            parseOptions,
+                                          )}
+                                          variant="question"
+                                          className="verifier-subdomain-evidence"
+                                          languageCode={(languageCode || "EN").toLowerCase()}
+                                        />
                                       </CardContent>
                                     )}
                                   </Card>

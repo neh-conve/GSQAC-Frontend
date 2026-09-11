@@ -1,9 +1,10 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../config/axios";
 import { queryKeys } from "../config/queryClient";
 import { enqueueSnackbar } from "notistack";
 import useAuthStore from "../store/useAuthStore";
 import { getRoleId } from "../constants/roles";
+import { uploadFileToPresignedUrl } from "./evidenceService";
 
 /** @param {Object} payload */
 function resolveSubdomainSubmitRoleId(payload) {
@@ -575,3 +576,86 @@ export const useGetVerifierDashboardQuery = ({
     refetchOnWindowFocus: false,
   });
 };
+
+export async function getVerifierSubdomainConsistency({ schoolId, subDomainId }) {
+  const response = await axiosInstance.get("/verifier/subdomain-consistency", {
+    params: { schoolId, subDomainId },
+  });
+  return response.data?.data || response.data;
+}
+
+export async function upsertVerifierSubdomainConsistency(payload) {
+  const response = await axiosInstance.put("/verifier/subdomain-consistency", payload);
+  return response.data?.data || response.data;
+}
+
+export async function uploadVerifierSchoolVerificationAadhaar(file) {
+  if (!file) return null;
+
+  const extension = file.name.split(".").pop()?.toLowerCase() || "pdf";
+  const allowed = ["jpg", "jpeg", "png", "pdf"];
+  if (!allowed.includes(extension)) {
+    throw new Error("Invalid file type. Allowed formats: JPG, PNG, PDF.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("File exceeds the maximum allowed size of 5 MB.");
+  }
+
+  const response = await axiosInstance.post(
+    "/common/get-upload-url",
+    {
+      extension,
+      contentType: file.type || "application/octet-stream",
+      uploadType: "verifierSchoolVerificationAadhaar",
+    },
+    { timeout: 90000 },
+  );
+
+  const uploadPayload = response?.data?.data || response?.data;
+  if (!uploadPayload?.uploadURL || !uploadPayload?.fileName) {
+    throw new Error("Unable to prepare Aadhaar upload.");
+  }
+
+  await uploadFileToPresignedUrl(uploadPayload.uploadURL, file);
+  return uploadPayload.fileName;
+}
+
+export function useVerifierSubdomainConsistencyQuery({
+  schoolId,
+  subDomainId,
+  enabled = true,
+}) {
+  return useQuery({
+    queryKey: ["verifier", "subdomain-consistency", schoolId, subDomainId],
+    queryFn: () => getVerifierSubdomainConsistency({ schoolId, subDomainId }),
+    enabled: Boolean(enabled && schoolId && subDomainId),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpsertVerifierSubdomainConsistencyMutation(options = {}) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: upsertVerifierSubdomainConsistency,
+    onSuccess: (data, variables, context) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "verifier",
+          "subdomain-consistency",
+          variables.schoolId,
+          variables.subDomainId,
+        ],
+      });
+      options.onSuccess?.(data, variables, context);
+    },
+    onError: (error, variables, context) => {
+      enqueueSnackbar(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to save verification response",
+        { variant: "error" },
+      );
+      options.onError?.(error, variables, context);
+    },
+  });
+}

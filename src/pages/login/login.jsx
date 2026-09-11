@@ -29,6 +29,7 @@ import {
   useSchoolResetPasswordMutation,
 } from "../../services/authService";
 import useAuthStore from "../../store/useAuthStore";
+import { resolveLoginErrorMessage } from "../../utils/loginMessages";
 import "./login.css";
 
 const Login = () => {
@@ -218,11 +219,12 @@ const Login = () => {
     },
     onError: (error) => {
       console.error("Send OTP Error:", error);
-      const errorMessage =
+      const rawMessage =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
         error?.message ||
         "Failed to send OTP. Please try again.";
+      const errorMessage = resolveLoginErrorMessage(selectedRole, rawMessage);
       setErrors({ ...errors, userId: errorMessage });
     },
   });

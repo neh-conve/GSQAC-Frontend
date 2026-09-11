@@ -15,14 +15,14 @@ export const roles = [
   //   color: "#f97316",
   //   dashboardRoute: "/parent-dashboard",
   // },
-  // {
-  //   value: "inspector",
-  //   label: "Verifier",
-  //   description: "Verification & inspection",
-  //   authMethod: "Verifier ID",
-  //   color: "#10b981",
-  //   dashboardRoute: "/inspector-dashboard",
-  // },
+  {
+    value: "inspector",
+    label: "Verifier",
+    description: "Verification & inspection",
+    authMethod: "Verifier ID",
+    color: "#10b981",
+    dashboardRoute: "/inspector-dashboard",
+  },
   {
     value: "admin",
     label: "GSQAC Admin",

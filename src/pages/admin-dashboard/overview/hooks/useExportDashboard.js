@@ -12,7 +12,7 @@ const CACHE_TTL = 5 * 60 * 1000;
 let _prefetchPromise = null;
 
 function cacheKeyFor(districtId) {
-  return districtId ? `d:${districtId}:assess-v5` : "all:assess-v5";
+  return districtId ? `d:${districtId}:assess-v6` : "all:assess-v6";
 }
 
 function isCacheValid(districtId) {
@@ -31,11 +31,11 @@ async function fetchDashboardExport(districtId) {
   return res.data?.data || {};
 }
 
-async function prefetchExportData(onProgress, scopedDistrictId) {
-  if (isCacheValid(scopedDistrictId)) return _cache;
-  if (_prefetchPromise) return _prefetchPromise;
+async function prefetchExportData(onProgress, scopedDistrictId, { bypassCache = false } = {}) {
+  if (!bypassCache && isCacheValid(scopedDistrictId)) return _cache;
+  if (_prefetchPromise && !bypassCache) return _prefetchPromise;
 
-  _prefetchPromise = (async () => {
+  const run = async () => {
     try {
       onProgress?.({ phase: "schools" });
       const payload = await fetchDashboardExport(scopedDistrictId);
@@ -53,16 +53,24 @@ async function prefetchExportData(onProgress, scopedDistrictId) {
         blockBreakdown: payload.blockBreakdown || [],
         districtRows: payload.districtRows || [],
         blockRows: payload.blockRows || [],
+        selfAssessmentSummary: payload.selfAssessmentSummary || null,
+        managementBreakdown: payload.managementBreakdown || [],
+        categoryBreakdown: payload.categoryBreakdown || [],
       };
-      _cache = result;
-      _cacheAt = Date.now();
-      _cacheKey = cacheKeyFor(scopedDistrictId);
+      if (!bypassCache) {
+        _cache = result;
+        _cacheAt = Date.now();
+        _cacheKey = cacheKeyFor(scopedDistrictId);
+      }
       return result;
     } finally {
-      _prefetchPromise = null;
+      if (!bypassCache) _prefetchPromise = null;
     }
-  })();
+  };
 
+  if (bypassCache) return run();
+
+  _prefetchPromise = run();
   return _prefetchPromise;
 }
 
@@ -472,6 +480,134 @@ function classifyCategoryGroup(school) {
   if ([1, 2, 4, 12].includes(id)) return "primary";
   if ([3, 5, 6, 7, 8, 10, 11].includes(id)) return "secondary";
   return null;
+}
+
+function emptyMgmtBuckets() {
+  return {
+    govt: { label: "Government (Govt)", total: 0, completed: 0, started: 0, pending: 0 },
+    aided: { label: "Grant-in-Aid (Aided)", total: 0, completed: 0, started: 0, pending: 0 },
+    private: { label: "Private (Unaided)", total: 0, completed: 0, started: 0, pending: 0 },
+  };
+}
+
+function emptyTypeBuckets() {
+  return {
+    primary: { label: "Primary Schools", total: 0, completed: 0, started: 0, pending: 0 },
+    secondary: { label: "Secondary Schools", total: 0, completed: 0, started: 0, pending: 0 },
+  };
+}
+
+function mgmtBucketsFromBreakdown(managementBreakdown = []) {
+  const buckets = emptyMgmtBuckets();
+  managementBreakdown.forEach((row) => {
+    const name = String(row.managementName || "").toLowerCase();
+    let key = "govt";
+    if (name.includes("private")) key = "private";
+    else if (name.includes("aid")) key = "aided";
+    buckets[key].total += Number(row.total) || 0;
+    buckets[key].completed += Number(row.completed) || 0;
+    buckets[key].started += Number(row.started) || 0;
+    buckets[key].pending += Number(row.pending) || 0;
+  });
+  return buckets;
+}
+
+function classifyCategoryGroupFromName(name = "") {
+  const normalized = String(name).trim().toLowerCase();
+  if (!normalized) return null;
+  const primaryNames = new Set([
+    "primary (1-5)",
+    "upper primary (1-8)",
+    "upper primary (6-8)",
+    "pre-primary",
+  ]);
+  if (primaryNames.has(normalized)) return "primary";
+  const secondaryNames = new Set([
+    "secondary (1-12)",
+    "secondary (6-12)",
+    "elementary (1-10)",
+    "upper primary (6-10)",
+    "secondary (9-10)",
+    "higher secondary (9-12)",
+    "higher secondary (11-12)",
+  ]);
+  if (secondaryNames.has(normalized)) return "secondary";
+  return null;
+}
+
+function typeBucketsFromBreakdown(categoryBreakdown = []) {
+  const buckets = emptyTypeBuckets();
+  categoryBreakdown.forEach((row) => {
+    let group = classifyCategoryGroup({ schoolCategoryId: row.categoryId });
+    if (!group) {
+      group = classifyCategoryGroupFromName(row.categoryName || row.categoryId);
+    }
+    if (!group) return;
+    buckets[group].total += Number(row.total) || 0;
+    buckets[group].completed += Number(row.completed) || 0;
+    buckets[group].started += Number(row.started) || 0;
+    buckets[group].pending += Number(row.pending) || 0;
+  });
+  return buckets;
+}
+
+function buildMgmtBucketsFromSchools(allSchools = []) {
+  const mgmtBuckets = emptyMgmtBuckets();
+  allSchools.forEach((school) => {
+    const status = classifyStatus(school);
+    const mgmt = mgmtBuckets[classifyManagement(school)];
+    if (!mgmt) return;
+    mgmt.total += 1;
+    if (status.isCompleted) mgmt.completed += 1;
+    else if (status.isInProgress) mgmt.started += 1;
+    else mgmt.pending += 1;
+  });
+  return mgmtBuckets;
+}
+
+function buildTypeBucketsFromSchools(allSchools = []) {
+  const typeBuckets = emptyTypeBuckets();
+  allSchools.forEach((school) => {
+    const status = classifyStatus(school);
+    const type = typeBuckets[classifyCategoryGroup(school)];
+    if (!type) return;
+    type.total += 1;
+    if (status.isCompleted) type.completed += 1;
+    else if (status.isInProgress) type.started += 1;
+    else type.pending += 1;
+  });
+  return typeBuckets;
+}
+
+function totalsFromSummary(summary, allSchools = []) {
+  if (summary) {
+    const completed = Number(summary.completedSchools) || 0;
+    const started = Number(summary.startedSchools) || 0;
+    const pending = Number(summary.notStartedSchools) || 0;
+    const total =
+      summary.totalEligibleSchools != null
+        ? Number(summary.totalEligibleSchools)
+        : completed + started + pending || allSchools.length;
+    return {
+      total,
+      completed,
+      started,
+      pending,
+      active: completed + started,
+    };
+  }
+
+  const totalSchools = allSchools.length;
+  const totalCompleted = allSchools.filter((s) => classifyStatus(s).isCompleted).length;
+  const totalStarted = allSchools.filter((s) => classifyStatus(s).isInProgress).length;
+  const totalPending = Math.max(0, totalSchools - totalCompleted - totalStarted);
+  return {
+    total: totalSchools,
+    completed: totalCompleted,
+    started: totalStarted,
+    pending: totalPending,
+    active: totalCompleted + totalStarted,
+  };
 }
 
 function getStatusKey(school) {
@@ -1021,50 +1157,29 @@ export function useExportDashboard({ districtId } = {}) {
   const exportPerformancePdf = async () => {
     if (isPdfExporting) return;
     setIsPdfExporting(true);
-    setPdfExportProgress(isCacheValid(districtId) ? "Building PDF…" : "Fetching data…");
+    setPdfExportProgress("Fetching data…");
 
     try {
-      const { allSchools } = await prefetchExportData((info) => {
+      const {
+        allSchools,
+        selfAssessmentSummary,
+        managementBreakdown,
+        categoryBreakdown,
+      } = await prefetchExportData((info) => {
         if (info.phase === "schools") setPdfExportProgress("Fetching school data…");
-      }, districtId);
+      }, districtId, { bypassCache: true });
 
       setPdfExportProgress("Preparing report…");
 
-      const totalSchools = allSchools.length;
-      const totalCompleted = allSchools.filter((s) => classifyStatus(s).isCompleted).length;
-      const totalStarted = allSchools.filter((s) => classifyStatus(s).isInProgress).length;
-      const totalPending = Math.max(0, totalSchools - totalCompleted - totalStarted);
-      const totalActive = totalCompleted + totalStarted;
-
-      const mgmtBuckets = {
-        govt: { label: "Government (Govt)", total: 0, completed: 0, started: 0, pending: 0 },
-        aided: { label: "Grant-in-Aid (Aided)", total: 0, completed: 0, started: 0, pending: 0 },
-        private: { label: "Private (Unaided)", total: 0, completed: 0, started: 0, pending: 0 },
-      };
-
-      const typeBuckets = {
-        primary: { label: "Primary Schools", total: 0, completed: 0, started: 0, pending: 0 },
-        secondary: { label: "Secondary Schools", total: 0, completed: 0, started: 0, pending: 0 },
-      };
-
-      allSchools.forEach((school) => {
-        const status = classifyStatus(school);
-        const mgmt = mgmtBuckets[classifyManagement(school)];
-        if (mgmt) {
-          mgmt.total += 1;
-          if (status.isCompleted) mgmt.completed += 1;
-          else if (status.isInProgress) mgmt.started += 1;
-          else mgmt.pending += 1;
-        }
-
-        const type = typeBuckets[classifyCategoryGroup(school)];
-        if (type) {
-          type.total += 1;
-          if (status.isCompleted) type.completed += 1;
-          else if (status.isInProgress) type.started += 1;
-          else type.pending += 1;
-        }
-      });
+      const totals = totalsFromSummary(selfAssessmentSummary, allSchools);
+      const mgmtBuckets =
+        managementBreakdown?.length > 0
+          ? mgmtBucketsFromBreakdown(managementBreakdown)
+          : buildMgmtBucketsFromSchools(allSchools);
+      const typeBuckets =
+        categoryBreakdown?.length > 0
+          ? typeBucketsFromBreakdown(categoryBreakdown)
+          : buildTypeBucketsFromSchools(allSchools);
 
       const districtMgmtRows = buildDistrictRankRowsByManagement(allSchools);
       const districtTypeRows = buildDistrictRankRowsByType(allSchools);
@@ -1086,13 +1201,7 @@ export function useExportDashboard({ districtId } = {}) {
         fileDate: generatedAt.toISOString().slice(0, 10),
         mgmtBuckets,
         typeBuckets,
-        totals: {
-          total: totalSchools,
-          completed: totalCompleted,
-          started: totalStarted,
-          pending: totalPending,
-          active: totalActive,
-        },
+        totals,
         districtMgmtRows,
         districtTypeRows,
       });

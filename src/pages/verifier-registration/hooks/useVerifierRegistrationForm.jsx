@@ -3,7 +3,7 @@ import { enqueueSnackbar } from "notistack";
 import {
   useGetAllDistrictsQuery,
   useGetDistrictWiseBlocksQuery,
-} from "../../../services/adminService";
+} from "../../../services/masterService";
 import {
   registerVerifier,
   uploadVerifierRegistrationDocument,
@@ -11,7 +11,6 @@ import {
 import {
   EXCLUDED_DISTRICT_NAME_PATTERN,
   INITIAL_VERIFIER_FORM,
-  STATIC_GUJARAT_DISTRICTS,
 } from "../constants/verifierRegistrationOptions";
 import {
   calculateAgeFromDob,
@@ -56,13 +55,12 @@ function normalizeBlockOptions(list) {
 
 function useDistrictOptions() {
   const { data } = useGetAllDistrictsQuery();
-  const apiDistricts = data?.data || [];
+  const apiDistricts = data?.data || data || [];
 
-  return useMemo(() => {
-    const source =
-      apiDistricts.length > 0 ? apiDistricts : STATIC_GUJARAT_DISTRICTS;
-    return normalizeDistrictOptions(source);
-  }, [apiDistricts]);
+  return useMemo(
+    () => normalizeDistrictOptions(apiDistricts),
+    [apiDistricts],
+  );
 }
 
 function resolveDistrictQueryId(districtId) {
@@ -96,8 +94,8 @@ function useTalukaOptions(districtId) {
   const queryId = resolveDistrictQueryId(districtId);
   const { data } = useGetDistrictWiseBlocksQuery(queryId);
   return useMemo(
-    () => normalizeBlockOptions(data?.data || []),
-    [data?.data],
+    () => normalizeBlockOptions(data?.data || data || []),
+    [data],
   );
 }
 
