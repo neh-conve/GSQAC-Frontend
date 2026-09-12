@@ -1,0 +1,17 @@
+.sv-info-panel {
+  width: 100%;
+}
+
+.sv-info-role-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sv-info-role-card:hover {
+  transform: translateY(-2px);
+}
+
+@media (max-width: 900px) {
+  .sv-info-school-card {
+    padding: 1rem !important;
+  }
+}

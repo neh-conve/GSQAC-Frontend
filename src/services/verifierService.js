@@ -577,6 +577,58 @@ export const useGetVerifierDashboardQuery = ({
   });
 };
 
+export async function getVerifierQuestionConsistency({ schoolId, questionId }) {
+  const response = await axiosInstance.get("/verifier/question-consistency", {
+    params: { schoolId, questionId },
+  });
+  return response.data?.data || response.data;
+}
+
+export async function upsertVerifierQuestionConsistency(payload) {
+  const response = await axiosInstance.put("/verifier/question-consistency", payload);
+  return response.data?.data || response.data;
+}
+
+export function useVerifierQuestionConsistencyQuery({
+  schoolId,
+  questionId,
+  enabled = true,
+}) {
+  return useQuery({
+    queryKey: ["verifier", "question-consistency", schoolId, questionId],
+    queryFn: () => getVerifierQuestionConsistency({ schoolId, questionId }),
+    enabled: Boolean(enabled && schoolId && questionId),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpsertVerifierQuestionConsistencyMutation(options = {}) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: upsertVerifierQuestionConsistency,
+    onSuccess: (data, variables, context) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "verifier",
+          "question-consistency",
+          variables.schoolId,
+          variables.questionId,
+        ],
+      });
+      options.onSuccess?.(data, variables, context);
+    },
+    onError: (error, variables, context) => {
+      enqueueSnackbar(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to save verification response",
+        { variant: "error" },
+      );
+      options.onError?.(error, variables, context);
+    },
+  });
+}
+
 export async function getVerifierSubdomainConsistency({ schoolId, subDomainId }) {
   const response = await axiosInstance.get("/verifier/subdomain-consistency", {
     params: { schoolId, subDomainId },
@@ -630,6 +682,96 @@ export function useVerifierSubdomainConsistencyQuery({
     queryFn: () => getVerifierSubdomainConsistency({ schoolId, subDomainId }),
     enabled: Boolean(enabled && schoolId && subDomainId),
     staleTime: 30 * 1000,
+  });
+}
+
+export async function getSchoolQuestionEvidenceForVerifier({
+  schoolId,
+  questionId,
+  languageCode = "EN",
+}) {
+  const response = await axiosInstance.get("/verifier/school-question-evidence", {
+    params: { schoolId, questionId, languageCode },
+  });
+  return response.data?.data || response.data;
+}
+
+export async function upsertEvidenceReview(payload) {
+  const response = await axiosInstance.put("/verifier/evidence-review", payload);
+  return response.data?.data || response.data;
+}
+
+export async function uploadVerifierEvidenceRejectionProof(file) {
+  if (!file) return null;
+
+  const extension = file.name.split(".").pop()?.toLowerCase() || "pdf";
+  const allowed = ["jpg", "jpeg", "png", "pdf"];
+  if (!allowed.includes(extension)) {
+    throw new Error("Invalid file type. Allowed formats: JPG, PNG, PDF.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("File exceeds the maximum allowed size of 5 MB.");
+  }
+
+  const response = await axiosInstance.post(
+    "/common/get-upload-url",
+    {
+      extension,
+      contentType: file.type || "application/octet-stream",
+      uploadType: "verifierEvidenceRejectionProof",
+    },
+    { timeout: 90000 },
+  );
+
+  const uploadPayload = response?.data?.data || response?.data;
+  if (!uploadPayload?.uploadURL || !uploadPayload?.fileName) {
+    throw new Error("Unable to prepare rejection proof upload.");
+  }
+
+  await uploadFileToPresignedUrl(uploadPayload.uploadURL, file);
+  return uploadPayload.fileName;
+}
+
+export function useSchoolQuestionEvidenceForVerifierQuery({
+  schoolId,
+  questionId,
+  languageCode = "EN",
+  enabled = true,
+}) {
+  return useQuery({
+    queryKey: ["verifier", "school-question-evidence", schoolId, questionId, languageCode],
+    queryFn: () =>
+      getSchoolQuestionEvidenceForVerifier({ schoolId, questionId, languageCode }),
+    enabled: Boolean(enabled && schoolId && questionId),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useUpsertEvidenceReviewMutation(options = {}) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: upsertEvidenceReview,
+    onSuccess: (data, variables, context) => {
+      queryClient.invalidateQueries({
+        queryKey: [
+          "verifier",
+          "school-question-evidence",
+          variables.schoolId,
+          variables.questionId,
+        ],
+      });
+      enqueueSnackbar("Evidence review saved", { variant: "success" });
+      options.onSuccess?.(data, variables, context);
+    },
+    onError: (error, variables, context) => {
+      enqueueSnackbar(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Failed to save evidence review",
+        { variant: "error" },
+      );
+      options.onError?.(error, variables, context);
+    },
   });
 }
 

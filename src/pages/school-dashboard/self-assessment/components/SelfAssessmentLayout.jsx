@@ -473,11 +473,21 @@ export function SelfAssessmentLayout({ c }) {
     subdomainNumber,
     handleSubmitQuestion,
     handleSubmit,
+    layoutMode,
+    pageTitle,
+    pageSubtitle,
+    onNavigateBack,
+    renderPageHeaderExtra,
+    renderDomainsPanelExtra,
   } = c;
+
+  const isVerifierLayout = layoutMode === "verifier";
+  const hideAppChrome = isVerifierLayout;
+  const verifierPanelHeight = "calc(100vh - 132px)";
 
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [mobileStep, setMobileStep] = useState(0);
-  const leftPanelWidth = 300;
+  const leftPanelWidth = isVerifierLayout ? 400 : 300;
   const at = assessmentTheme;
 
   const scrollMobileToTop = useCallback(() => {
@@ -760,20 +770,28 @@ export function SelfAssessmentLayout({ c }) {
       : t("selfAssessment.progressOverview.subtitleDomains");
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh", width: "100%" }}>
-      <AppDrawer open={drawerOpen} handleDrawerToggle={handleDrawerToggle} />
+    <Box
+      sx={{
+        display: "flex",
+        minHeight: hideAppChrome ? 0 : "100vh",
+        width: "100%",
+      }}
+    >
+      {!hideAppChrome ? (
+        <AppDrawer open={drawerOpen} handleDrawerToggle={handleDrawerToggle} />
+      ) : null}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           width: "100%",
           minHeight: 0,
-          height: "100vh",
-          maxHeight: "100dvh",
+          height: hideAppChrome ? "auto" : "100vh",
+          maxHeight: hideAppChrome ? "none" : "100dvh",
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden",
-          marginLeft: drawerOpen && !matchDownMD ? 4 : 0,
+          overflow: hideAppChrome ? "visible" : "hidden",
+          marginLeft: !hideAppChrome && drawerOpen && !matchDownMD ? 4 : 0,
           [`@media (min-width:${theme.breakpoints.values.xl}px)`]: {
             marginLeft: drawerOpen && !matchDownMD ? 4 : 0,
           },
@@ -783,6 +801,7 @@ export function SelfAssessmentLayout({ c }) {
           }),
         }}
       >
+        {!hideAppChrome ? (
         <AppBar
           position="fixed"
           sx={{
@@ -823,30 +842,58 @@ export function SelfAssessmentLayout({ c }) {
               gap: { xs: 1, md: 2 },
             }}
           >
-            <IconButton
-              onClick={handleDrawerToggle}
-              edge="start"
-              sx={{
-                color: "#64748b",
-                borderRadius: "12px",
-                width: { xs: 40, md: 44 },
-                height: { xs: 40, md: 44 },
-                flexShrink: 0,
-                backgroundColor: "rgba(255,255,255,0.9)",
-                border: "1px solid rgba(0,0,0,0.05)",
-                boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-                "&:hover": {
-                  backgroundColor: "#ffffff",
-                  color: "#2563eb",
-                  transform: "scale(1.05)",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                  borderColor: "rgba(59, 130, 246, 0.2)",
-                },
-                transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-              }}
-            >
-              <Menu sx={{ fontSize: { xs: 22, md: 24 } }} />
-            </IconButton>
+            {isVerifierLayout && onNavigateBack ? (
+              <IconButton
+                onClick={onNavigateBack}
+                edge="start"
+                aria-label="Back to allocated schools"
+                sx={{
+                  color: "#64748b",
+                  borderRadius: "12px",
+                  width: { xs: 40, md: 44 },
+                  height: { xs: 40, md: 44 },
+                  flexShrink: 0,
+                  backgroundColor: "rgba(255,255,255,0.9)",
+                  border: "1px solid rgba(0,0,0,0.05)",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                  "&:hover": {
+                    backgroundColor: "#ffffff",
+                    color: at.primary,
+                    transform: "scale(1.05)",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    borderColor: `${at.primary}33`,
+                  },
+                  transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
+              >
+                <ArrowBack sx={{ fontSize: { xs: 22, md: 24 } }} />
+              </IconButton>
+            ) : (
+              <IconButton
+                onClick={handleDrawerToggle}
+                edge="start"
+                sx={{
+                  color: "#64748b",
+                  borderRadius: "12px",
+                  width: { xs: 40, md: 44 },
+                  height: { xs: 40, md: 44 },
+                  flexShrink: 0,
+                  backgroundColor: "rgba(255,255,255,0.9)",
+                  border: "1px solid rgba(0,0,0,0.05)",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+                  "&:hover": {
+                    backgroundColor: "#ffffff",
+                    color: at.primary,
+                    transform: "scale(1.05)",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    borderColor: `${at.primary}33`,
+                  },
+                  transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
+              >
+                <Menu sx={{ fontSize: { xs: 22, md: 24 } }} />
+              </IconButton>
+            )}
             <Box
               sx={{
                 flex: 1,
@@ -861,12 +908,11 @@ export function SelfAssessmentLayout({ c }) {
                   width: { xs: 36, sm: 40, md: 48 },
                   height: { xs: 36, sm: 40, md: 48 },
                   borderRadius: { xs: "10px", md: "14px" },
-                  background:
-                    "linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #4f46e5 100%)",
+                  background: at.gradient || at.panelGradient,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  boxShadow: "0 4px 16px rgba(59, 130, 246, 0.28)",
+                  boxShadow: `0 4px 16px ${at.primary}47`,
                   flexShrink: 0,
                 }}
               >
@@ -892,14 +938,13 @@ export function SelfAssessmentLayout({ c }) {
                     color: "#0f172a",
                     letterSpacing: "-0.02em",
                     lineHeight: 1.2,
-                    background:
-                      "linear-gradient(135deg, #3b82f6 0%, #1e40af 100%)",
+                    background: `linear-gradient(135deg, ${at.primary} 0%, ${at.dark} 100%)`,
                     WebkitBackgroundClip: "text",
                     WebkitTextFillColor: "transparent",
                     backgroundClip: "text",
                   }}
                 >
-                  {t("selfAssessment.title")}
+                  {pageTitle || t("selfAssessment.title")}
                 </Typography>
                 <Typography
                   variant="caption"
@@ -915,7 +960,7 @@ export function SelfAssessmentLayout({ c }) {
                     mt: 0.25,
                   }}
                 >
-                  {t("selfAssessment.appBarSubtitle")}
+                  {pageSubtitle || t("selfAssessment.appBarSubtitle")}
                 </Typography>
               </Box>
             </Box>
@@ -970,17 +1015,18 @@ export function SelfAssessmentLayout({ c }) {
             )}
           </Toolbar>
         </AppBar>
+        ) : null}
 
         <Box
           sx={{
-            mt: 8,
+            mt: hideAppChrome ? 0 : 8,
             flex: 1,
-            minHeight: 0,
+            minHeight: hideAppChrome ? verifierPanelHeight : 0,
             display: "flex",
             flexDirection: "column",
-            overflow: "hidden",
+            overflow: hideAppChrome ? "visible" : "hidden",
           }}
-          className={`self-assessment-page-content app-page-below-header sa-theme-${at.kind}`}
+          className={`self-assessment-page-content${hideAppChrome ? "" : " app-page-below-header"} sa-theme-${at.kind}`}
         >
           {isAssessmentDataRefreshing && (
             <LinearProgress
@@ -995,11 +1041,21 @@ export function SelfAssessmentLayout({ c }) {
               }}
             />
           )}
+          {typeof renderPageHeaderExtra === "function"
+            ? renderPageHeaderExtra()
+            : null}
+
           <Box
             sx={{
-              pl: drawerOpen && !matchDownMD ? 0 : { xs: 1.5, sm: 2, md: 3 },
-              pr: { xs: 1.5, sm: 2, md: 3 },
-              py: { xs: mobileStep === 2 ? 1 : 2, md: 3 },
+              pl:
+                hideAppChrome || (drawerOpen && !matchDownMD)
+                  ? 0
+                  : { xs: 1.5, sm: 2, md: 3 },
+              pr: hideAppChrome ? 0 : { xs: 1.5, sm: 2, md: 3 },
+              py: {
+                xs: mobileStep === 2 ? 1 : hideAppChrome ? 0.75 : 2,
+                md: hideAppChrome ? 1 : 3,
+              },
               flex: 1,
               minHeight: 0,
               display: "flex",
@@ -1013,6 +1069,7 @@ export function SelfAssessmentLayout({ c }) {
             }}
           >
             {/* Header */}
+            {!isVerifierLayout ? (
             <Box
               sx={{
                 display: { xs: "none", md: "flex" },
@@ -1142,6 +1199,50 @@ export function SelfAssessmentLayout({ c }) {
                 </ToggleButtonGroup>
               </Box>
             </Box>
+            ) : (
+              <Box
+                sx={{
+                  display: { xs: "none", md: "flex" },
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  mb: 1,
+                  gap: 1,
+                }}
+              >
+                <ToggleButtonGroup
+                  value={currentLanguage}
+                  exclusive
+                  onChange={(e, newLanguage) => {
+                    handleLanguageChange(newLanguage);
+                  }}
+                  size="small"
+                  sx={{
+                    "& .MuiToggleButton-root": {
+                      px: 2,
+                      py: 0.5,
+                      fontSize: "0.8125rem",
+                      fontWeight: 600,
+                      textTransform: "uppercase",
+                      borderColor: at.primary + "40",
+                      color: colors.text.secondary,
+                      "&.Mui-selected": {
+                        bgcolor: at.primary,
+                        color: "white",
+                        "&:hover": {
+                          bgcolor: at.dark,
+                        },
+                      },
+                      "&:hover": {
+                        bgcolor: at.lightest,
+                      },
+                    },
+                  }}
+                >
+                  <ToggleButton value="gu">ગુ</ToggleButton>
+                  <ToggleButton value="en">EN</ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+            )}
 
             {/* Mobile: language + deadline only (title lives in AppBar) */}
             {matchDownMD && mobileStep < 2 && (
@@ -1326,9 +1427,12 @@ export function SelfAssessmentLayout({ c }) {
                     overflow: "hidden",
                     maxHeight: {
                       xs: showMobileNavPanel ? "none" : "100%",
-                      md: "calc(100vh - 200px)",
+                      md: hideAppChrome ? verifierPanelHeight : "calc(100vh - 200px)",
                     },
-                    minHeight: { xs: showMobileNavPanel ? 0 : "auto", md: "auto" },
+                    minHeight: {
+                      xs: showMobileNavPanel ? 0 : "auto",
+                      md: hideAppChrome ? verifierPanelHeight : "auto",
+                    },
                     height: {
                       xs: showMobileNavPanel ? "100%" : "100%",
                       md: "100%",
@@ -1340,7 +1444,10 @@ export function SelfAssessmentLayout({ c }) {
                   <Box
                     className="sa-panel-header"
                     sx={{
-                      p: { xs: 2.5, md: 1.75 },
+                      p: {
+                        xs: 2.5,
+                        md: isVerifierLayout ? 2.25 : 1.75,
+                      },
                       borderBottom: `2px solid ${at.primary}22`,
                       background: at.panelGradient,
                       flexShrink: 0,
@@ -1377,7 +1484,10 @@ export function SelfAssessmentLayout({ c }) {
                             fontWeight: 700,
                             color: colors.text.primary,
                             mb: 0.25,
-                            fontSize: { xs: "1rem", md: "0.9375rem" },
+                            fontSize: {
+                              xs: "1rem",
+                              md: isVerifierLayout ? "1.0625rem" : "0.9375rem",
+                            },
                             lineHeight: 1.3,
                           }}
                         >
@@ -1388,30 +1498,22 @@ export function SelfAssessmentLayout({ c }) {
                         <Typography
                           variant="body2"
                           color="text.secondary"
-                          sx={{ fontSize: { xs: "0.8125rem", md: "0.75rem" } }}
+                          sx={{
+                            fontSize: {
+                              xs: "0.8125rem",
+                              md: isVerifierLayout ? "0.8125rem" : "0.75rem",
+                            },
+                          }}
                         >
                           {showMobileSubdomainsPanel && selectedDomain
                             ? getDomainName(selectedDomain)
                             : t("selfAssessment.navigateSubtitle")}
                         </Typography>
+                        {!showMobileSubdomainsPanel &&
+                        typeof renderDomainsPanelExtra === "function"
+                          ? renderDomainsPanelExtra()
+                          : null}
                       </Box>
-                      {!matchDownMD && (
-                        // <IconButton
-                        //   type="button"
-                        //   size="small"
-                        //   onClick={() => setIsLeftPanelCollapsed(true)}
-                        //   aria-label="Collapse assessment domains panel"
-                        //   sx={{
-                        //     flexShrink: 0,
-                        //     color: at.primary,
-                        //     bgcolor: at.primary + "12",
-                        //     "&:hover": { bgcolor: at.primary + "22" },
-                        //   }}
-                        // >
-                        //   <ChevronLeft fontSize="small" />
-                        // </IconButton>
-                        <></>
-                      )}
                     </Box>
                     <AssessmentChipSelector
                       className="sa-domains-panel__chip-selector"
@@ -1449,7 +1551,10 @@ export function SelfAssessmentLayout({ c }) {
                       overflowY: "auto",
                       overflowX: "hidden",
                       WebkitOverflowScrolling: "touch",
-                      p: { xs: 2.5, md: 1.5 },
+                      p: {
+                        xs: 2.5,
+                        md: isVerifierLayout ? 2 : 1.5,
+                      },
                     }}
                   >
                     {isAssessmentDataLoading ? (
@@ -1963,7 +2068,7 @@ export function SelfAssessmentLayout({ c }) {
                   </Box>
 
                   {/* Final Submit Button — desktop + mobile domains tab only */}
-                  {isPublished &&
+                  {!!isPublished &&
                     !allAssessmentsSubmitted &&
                     (!matchDownMD || mobileStep === 0) && (
                       <Box
@@ -1983,8 +2088,9 @@ export function SelfAssessmentLayout({ c }) {
                           disabled={
                             submitAssessmentMutation.isPending ||
                             isSubmittingAllAssessments ||
-                            !allAssessmentsAnswersComplete ||
-                            !allAssessmentsMandatoryEvidenceComplete ||
+                            (!isVerifierLayout && !allAssessmentsAnswersComplete) ||
+                            (!isVerifierLayout &&
+                              !allAssessmentsMandatoryEvidenceComplete) ||
                             allAssessmentsSubmitted ||
                             !canSubmitAssessment
                           }
@@ -2596,7 +2702,10 @@ export function SelfAssessmentLayout({ c }) {
                       bgcolor: "white",
                       display: "flex",
                       flexDirection: "column",
-                      maxHeight: "calc(100vh - 200px)",
+                      maxHeight: hideAppChrome
+                        ? verifierPanelHeight
+                        : "calc(100vh - 200px)",
+                      minHeight: hideAppChrome ? verifierPanelHeight : undefined,
                       overflow: "hidden",
                       minWidth: 0,
                       border: `1px solid ${at.primary}18`,
@@ -2607,7 +2716,10 @@ export function SelfAssessmentLayout({ c }) {
                     <Box
                       className="sa-panel-header sa-overview-panel__header"
                       sx={{
-                        p: { xs: 2.5, md: 1.75 },
+                        p: {
+                          xs: 2.5,
+                          md: isVerifierLayout ? 2.25 : 1.75,
+                        },
                         borderBottom: `2px solid ${at.primary}22`,
                         background: at.panelGradient,
                         display: "flex",
@@ -2624,7 +2736,10 @@ export function SelfAssessmentLayout({ c }) {
                             fontWeight: 700,
                             color: colors.text.primary,
                             mb: 0.25,
-                            fontSize: { xs: "1.125rem", md: "1rem" },
+                            fontSize: {
+                              xs: "1.125rem",
+                              md: isVerifierLayout ? "1.0625rem" : "1rem",
+                            },
                             lineHeight: 1.3,
                           }}
                         >
@@ -2633,7 +2748,12 @@ export function SelfAssessmentLayout({ c }) {
                         <Typography
                           variant="body2"
                           color="text.secondary"
-                          sx={{ fontSize: { xs: "0.8125rem", md: "0.75rem" } }}
+                          sx={{
+                            fontSize: {
+                              xs: "0.8125rem",
+                              md: isVerifierLayout ? "0.8125rem" : "0.75rem",
+                            },
+                          }}
                         >
                           {t("selfAssessment.reviewSubtitle")}
                         </Typography>
@@ -2647,7 +2767,10 @@ export function SelfAssessmentLayout({ c }) {
                       sx={{
                         flex: 1,
                         overflowY: "auto",
-                        p: { xs: 2.5, md: 2 },
+                        p: {
+                          xs: 2.5,
+                          md: isVerifierLayout ? 2.5 : 2,
+                        },
                         display: "flex",
                         flexDirection: "column",
                       }}

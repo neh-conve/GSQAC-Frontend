@@ -216,9 +216,11 @@ function McqQuestionBody({
     getOptionText,
     assessmentTheme,
     userName,
+    schoolId,
     selectedAssessmentId,
     selectedAssessment,
     languageCode,
+    renderQuestionEvidencePanel,
   } = c;
 
   const at = assessmentTheme || {
@@ -342,22 +344,32 @@ function McqQuestionBody({
             logLabel="SubdomainEvidencePanel"
             message="Evidence could not be loaded. You can continue answering."
           >
-            <SubdomainEvidencePanel
-              questionId={question?.questionId}
-              question={question}
-              schoolId={userName}
-              assessmentId={
-                selectedAssessment?.assessmentId ?? selectedAssessmentId ?? null
-              }
-              selectedAssessment={selectedAssessment}
-              assessmentTheme={assessmentTheme}
-              readOnly={isReadOnly}
-              evidenceOptional={evidenceOptional}
-              variant="question"
-              className="sa-question-evidence"
-              languageCode={(languageCode || "EN").toLowerCase()}
-              onProgressChange={onEvidenceProgressChange}
-            />
+            {typeof renderQuestionEvidencePanel === "function" ? (
+              renderQuestionEvidencePanel({
+                question,
+                selectedAnswer,
+                evidenceOptional,
+                readOnly: isReadOnly,
+                onEvidenceProgressChange,
+              })
+            ) : (
+              <SubdomainEvidencePanel
+                questionId={question?.questionId}
+                question={question}
+                schoolId={schoolId || userName}
+                assessmentId={
+                  selectedAssessment?.assessmentId ?? selectedAssessmentId ?? null
+                }
+                selectedAssessment={selectedAssessment}
+                assessmentTheme={assessmentTheme}
+                readOnly={isReadOnly}
+                evidenceOptional={evidenceOptional}
+                variant="question"
+                className="sa-question-evidence"
+                languageCode={(languageCode || "EN").toLowerCase()}
+                onProgressChange={onEvidenceProgressChange}
+              />
+            )}
           </ErrorBoundary>
         ) : null}
       </CardContent>
@@ -503,6 +515,8 @@ export function SubdomainQuestionFlow({
     selectedSection,
     selectedSubject,
     handleSubdomainEvidenceProgressChange,
+    renderSubdomainHeaderExtra,
+    renderQuestionHeaderExtra,
   } = c;
 
   const [subdomainEvidenceProgress, setSubdomainEvidenceProgress] = useState(
@@ -627,6 +641,10 @@ export function SubdomainQuestionFlow({
         overflow: "hidden",
       }}
     >
+      {typeof renderSubdomainHeaderExtra === "function"
+        ? renderSubdomainHeaderExtra()
+        : null}
+
       {/* Domain / subdomain context */}
       <Box
         className={`sa-wizard-context${
@@ -693,12 +711,33 @@ export function SubdomainQuestionFlow({
               >
                 {getSubdomainName(selectedSubdomain)}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                {t("selfAssessment.criterionProgress", {
-                  current: currentQuestionIndex + 1,
-                  total: flattenedQuestions.length,
-                })}
-              </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: { xs: "column", md: "row" },
+                  alignItems: { xs: "stretch", md: "center" },
+                  justifyContent: "space-between",
+                  gap: { xs: 0.75, md: 1.5 },
+                  mt: 0.25,
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ flexShrink: 0, fontWeight: 600 }}
+                >
+                  {t("selfAssessment.criterionProgress", {
+                    current: currentQuestionIndex + 1,
+                    total: flattenedQuestions.length,
+                  })}
+                </Typography>
+                {typeof renderQuestionHeaderExtra === "function"
+                  ? renderQuestionHeaderExtra({
+                      question,
+                      questionNumber: currentQuestionIndex + 1,
+                    })
+                  : null}
+              </Box>
             </Box>
             {matchDownMD ? (
               <Chip

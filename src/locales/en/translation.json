@@ -299,11 +299,59 @@
   "schoolVerification": {
     "title": "School Verification",
     "subtitle": "Verify and assess school quality standards",
+    "backToSchools": "Back to allocated schools",
     "failedToLoadDomains": "Failed to load domains. Please check your connection.",
     "schoolNameFallback": "School Name",
     "schoolId": "School ID",
     "schoolCode": "School Code",
     "district": "District",
-    "block": "Block"
+    "block": "Block",
+    "cluster": "Cluster",
+    "village": "Village",
+    "submitTitle": "Submit verification",
+    "submitMessage": "Are you sure you want to submit this school verification? You will not be able to edit your answers after submission.",
+    "submitConfirm": "Submit verification",
+    "status": {
+      "completed": "Completed",
+      "inProgress": "In progress",
+      "allocated": "Allocated",
+      "pending": "Pending",
+      "submitted": "Submitted",
+      "draft": "Draft"
+    },
+    "cards": {
+      "verifierTitle": "School Verifier",
+      "assignedToYou": "Assigned to you",
+      "verificationProgress": "Verification progress",
+      "allocationTitle": "Allocation",
+      "allocationSubtitle": "Verifier assignment",
+      "allocatedOn": "Allocated on",
+      "assessmentTitle": "Assessment",
+      "assessmentSubtitle": "Current verification form",
+      "questionsAnswered": "Questions answered"
+    },
+    "evidence": {
+      "title": "Evidence verification",
+      "subtitle": "Review school documents — school answers are hidden",
+      "loading": "Loading school evidence…",
+      "noSlots": "No evidence configured for this question.",
+      "uploaded": "uploaded",
+      "schoolDocument": "School document",
+      "notUploaded": "Not uploaded by school",
+      "view": "View",
+      "open": "Open",
+      "yourReview": "Your review",
+      "approve": "Approve",
+      "reject": "Reject",
+      "uploadProof": "Upload proof",
+      "replaceProof": "Replace proof",
+      "proofRequired": "Upload rejection proof before rejecting",
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "rejectReason": "Reason (optional)",
+      "viewProof": "View proof",
+      "proofPreview": "Rejection proof"
+    }
   }
 }

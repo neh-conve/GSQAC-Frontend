@@ -283,11 +283,21 @@ const InspectorDashboard = () => {
         <Box sx={{ mt: 9 }}>
           <Box
             sx={{
-              pl: drawerOpen && !matchDownMD ? 0 : { xs: 2, sm: 2, md: 3 },
-              pr: { xs: 2, sm: 2, md: 3 },
-              py: 3,
-              maxWidth: "xl",
-              mx: "auto",
+              pl:
+                currentView === "school-verification"
+                  ? drawerOpen && !matchDownMD
+                    ? 0
+                    : { xs: 1, sm: 1.5, md: 2 }
+                  : drawerOpen && !matchDownMD
+                    ? 0
+                    : { xs: 2, sm: 2, md: 3 },
+              pr:
+                currentView === "school-verification"
+                  ? { xs: 1, sm: 1.5, md: 2 }
+                  : { xs: 2, sm: 2, md: 3 },
+              py: currentView === "school-verification" ? 1 : 3,
+              maxWidth: currentView === "school-verification" ? "none" : "xl",
+              mx: currentView === "school-verification" ? 0 : "auto",
             }}
           >
             {/* Content based on current route */}

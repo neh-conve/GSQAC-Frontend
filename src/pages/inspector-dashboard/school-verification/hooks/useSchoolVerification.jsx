@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,6 +76,16 @@ import {
   clampProgressPercentage,
   sanitizeDomainsProgress,
 } from "../../../../utils/assessmentSubmit";
+import { getAssessmentTheme } from "../../../../utils/assessmentTheme";
+import { sumProgressFromDomains } from "../../../../utils/hostelDomain";
+import {
+  getStoredAppLanguage,
+  persistAppLanguage,
+} from "../../../../utils/i18nLanguage";
+import { useLogoutMutation } from "../../../../services/authService";
+import {
+  zeroMandatoryEvidenceProgress,
+} from "../../../../services/evidenceService";
 
 export function useSchoolVerification() {
   const { t, i18n } = useTranslation();
@@ -83,7 +93,9 @@ export function useSchoolVerification() {
   const matchDownMD = useMediaQuery(theme.breakpoints.down("md"));
   const navigate = useNavigate();
   const location = useLocation();
-  const { userId, userName } = useAuthStore();
+  const { userId, userName, user, logout } = useAuthStore();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const queryClient = useQueryClient();
   const [currentLanguage, setCurrentLanguage] = useState("gu");
   const [selectedDomain, setSelectedDomain] = useState(null);
@@ -120,9 +132,34 @@ export function useSchoolVerification() {
   // Use inspector role ID (roleId: 3)
   const roleId = getRoleId("inspector");
 
+  const logoutMutation = useLogoutMutation({
+    onSuccess: () => {
+      logout();
+      navigate("/login");
+    },
+    onError: () => {
+      logout();
+      navigate("/login");
+    },
+  });
+
+  const handleDrawerToggle = () => setDrawerOpen((prev) => !prev);
+  const handleLogout = () => logoutMutation.mutate();
+
+  const handleLanguageChange = useCallback(
+    (lang) => {
+      const next = lang || getStoredAppLanguage() || "gu";
+      setCurrentLanguage(next);
+      persistAppLanguage(next);
+      i18n.changeLanguage(next);
+    },
+    [i18n],
+  );
+
   const {
     data: domainsData,
     isLoading: isLoadingDomains,
+    isFetching: isFetchingDomains,
     isError: isErrorDomains,
     refetch: refetchDomains,
   } = useGetDomainsQuery({
@@ -352,18 +389,25 @@ export function useSchoolVerification() {
   }, [assessments, selectedAssessmentId]);
 
   const domains = selectedAssessment?.domains || [];
-  const isPublished =
-    selectedAssessment?.isPublished ?? domainsData?.isPublished ?? false;
+
+  const assessmentTheme = useMemo(
+    () => getAssessmentTheme(selectedAssessment),
+    [selectedAssessment],
+  );
+
+  const isPublished = Boolean(
+    selectedAssessment?.isPublished ?? domainsData?.isPublished ?? false,
+  );
   const endDate = selectedAssessment?.endDate ?? domainsData?.endDate ?? null;
-  const isSubmitted =
-    selectedAssessment?.isSubmitted ?? domainsData?.isSubmitted ?? false;
+  const isSubmitted = Boolean(
+    selectedAssessment?.isSubmitted ?? domainsData?.isSubmitted ?? false,
+  );
   const sessionId =
     selectedAssessment?.sessionId ?? domainsData?.sessionId ?? null;
 
   const assessmentProgress = useMemo(() => {
-    const totalQuestions = Number(selectedAssessment?.totalQuestions) || 0;
-    const totalAnswer = Number(selectedAssessment?.totalAnswer) || 0;
-    const answerPercentage = Number(selectedAssessment?.answerPercentage) || 0;
+    const { totalQuestions, totalAnswer, answerPercentage } =
+      sumProgressFromDomains(domains);
     const clampedPercentage = Math.min(100, Math.max(0, answerPercentage));
 
     return {
@@ -375,7 +419,11 @@ export function useSchoolVerification() {
           ? Number(answerPercentage.toFixed(2))
           : Math.round(clampedPercentage),
     };
-  }, [selectedAssessment]);
+  }, [domains]);
+
+  const isEndDatePassed = false;
+  const isReadOnly = isSubmitted || isEndDatePassed;
+  const handleSubdomainEvidenceProgressChange = useCallback(() => {}, []);
 
   // Helper function to map dropdown group range to API group range format
   const mapGroupRangeToApiFormat = (groupRange) => {
@@ -886,6 +934,8 @@ export function useSchoolVerification() {
     setSelectedClass(null);
     setSelectedSection(null);
     setSelectedSubject(null);
+    setSelectedQuestionTab(0);
+    setCurrentQuestionIndex(0);
   };
 
   const handleAssessmentSelect = (assessment) => {
@@ -900,6 +950,8 @@ export function useSchoolVerification() {
     setSelectedSection(null);
     setSelectedSubject(null);
     setChartDrilldownAssessmentId(null);
+    setSelectedQuestionTab(0);
+    setCurrentQuestionIndex(0);
   };
 
   // Effect to handle class changes - reset section and subject
@@ -1338,6 +1390,19 @@ export function useSchoolVerification() {
     });
   }, [domains]);
 
+  const mandatoryEvidenceProgress = zeroMandatoryEvidenceProgress();
+  const allMandatoryEvidenceComplete = true;
+  const allAssessmentsMandatoryEvidenceProgress = zeroMandatoryEvidenceProgress();
+  const allAssessmentsMandatoryEvidenceComplete = true;
+  const allAssessmentsSubmitted = isSubmitted;
+  const allAssessmentsAnswersComplete = allDomainsComplete;
+  const allAssessmentsComplete = allDomainsComplete;
+  const canSubmitAssessment = allDomainsComplete && !isSubmitted;
+  const isSubmittingAllAssessments = false;
+  const incompleteAssessments = [];
+  const isAssessmentDataLoading = isLoadingDomains;
+  const isAssessmentDataRefreshing = isFetchingDomains && !isLoadingDomains;
+
   // Handle submit - Submit all answers for the current subdomain
   const handleSubmit = () => {
     if (
@@ -1697,6 +1762,169 @@ export function useSchoolVerification() {
   // Get current tab
   const currentTab = questionTabs[selectedQuestionTab] || null;
 
+  const flattenedQuestions = useMemo(() => {
+    const items = [];
+    questionTabs.forEach((tab, tabIndex) => {
+      tab.questions.forEach((question, questionIndexInTab) => {
+        items.push({
+          question,
+          tabId: tab.id,
+          tabIndex,
+          tabLabel: tab.label,
+          tabColor: tab.color,
+          questionIndexInTab,
+        });
+      });
+    });
+    return items;
+  }, [questionTabs]);
+
+  useEffect(() => {
+    if (currentQuestionIndex >= flattenedQuestions.length) {
+      setCurrentQuestionIndex(0);
+    }
+  }, [flattenedQuestions.length, currentQuestionIndex]);
+
+  useEffect(() => {
+    const entry = flattenedQuestions[currentQuestionIndex];
+    if (entry && entry.tabIndex !== selectedQuestionTab) {
+      setSelectedQuestionTab(entry.tabIndex);
+    }
+  }, [currentQuestionIndex, flattenedQuestions, selectedQuestionTab]);
+
+  const currentQuestionEntry = flattenedQuestions[currentQuestionIndex] || null;
+  const isFirstQuestionInSubdomain = currentQuestionIndex === 0;
+  const isLastQuestionInSubdomain =
+    flattenedQuestions.length > 0 &&
+    currentQuestionIndex === flattenedQuestions.length - 1;
+
+  const nextSubdomainInfo = useMemo(() => {
+    if (!selectedDomain || !selectedSubdomain || !domains?.length) return null;
+
+    const domainIdx = domains.findIndex(
+      (d) => d.domainId === selectedDomain.domainId,
+    );
+    const subdomains = selectedDomain.subDomain || [];
+    const currentSubId =
+      selectedSubdomain.subDomainId || selectedSubdomain.id;
+    const subIdx = subdomains.findIndex(
+      (sd) => (sd.subDomainId || sd.id) === currentSubId,
+    );
+
+    if (subIdx >= 0 && subIdx < subdomains.length - 1) {
+      return { domain: selectedDomain, subdomain: subdomains[subIdx + 1] };
+    }
+
+    if (domainIdx >= 0 && domainIdx < domains.length - 1) {
+      const nextDomain = domains[domainIdx + 1];
+      const firstSub = nextDomain.subDomain?.[0];
+      if (firstSub) {
+        return { domain: nextDomain, subdomain: firstSub };
+      }
+    }
+
+    return null;
+  }, [domains, selectedDomain, selectedSubdomain]);
+
+  const getNextSubdomain = () => nextSubdomainInfo;
+
+  const handleNextQuestion = () => {
+    if (!isLastQuestionInSubdomain) {
+      setCurrentQuestionIndex((prev) =>
+        Math.min(prev + 1, flattenedQuestions.length - 1),
+      );
+    }
+  };
+
+  const handlePreviousQuestion = () => {
+    if (!isFirstQuestionInSubdomain) {
+      setCurrentQuestionIndex((prev) => Math.max(prev - 1, 0));
+    }
+  };
+
+  const handleGoToNextSubdomain = () => {
+    const next = getNextSubdomain();
+    if (!next) {
+      enqueueSnackbar("You have reached the last subdomain.", { variant: "info" });
+      return;
+    }
+
+    if (selectedSubdomain) {
+      const currentSubdomainId =
+        selectedSubdomain.subDomainId || selectedSubdomain.id;
+      const activeClassKey = selectedClass ? String(selectedClass) : "general";
+
+      setSubdomainAnswers((prev) => ({
+        ...prev,
+        [currentSubdomainId]: { ...answers },
+      }));
+      setSubdomainTextAnswers((prev) => ({
+        ...prev,
+        [currentSubdomainId]: { ...textAnswers },
+      }));
+
+      const storageKey = `${currentSubdomainId}_${activeClassKey}`;
+      setClassWiseAnswers((prev) => ({
+        ...prev,
+        [storageKey]: { ...answers },
+      }));
+      setClassWiseTextAnswers((prev) => ({
+        ...prev,
+        [storageKey]: { ...textAnswers },
+      }));
+    }
+
+    if (next.domain.domainId !== selectedDomain?.domainId) {
+      setSelectedDomain(next.domain);
+    }
+
+    const nextSubId = next.subdomain.subDomainId || next.subdomain.id;
+    const savedAnswers = subdomainAnswers[nextSubId] || {};
+    const nextStorageKey = `${nextSubId}_general`;
+    const savedTextAnswers =
+      subdomainTextAnswers[nextSubId] ||
+      classWiseTextAnswers[nextStorageKey] ||
+      {};
+
+    setSelectedSubdomain(next.subdomain);
+    setAnswers(savedAnswers);
+    setTextAnswers(savedTextAnswers);
+    setSelectedClassGroup(null);
+    setSelectedClass(null);
+    setSelectedSection(null);
+    setSelectedSubject(null);
+    setSelectedQuestionTab(0);
+    setCurrentQuestionIndex(0);
+  };
+
+  const isSaveAssessmentDisabled = () => {
+    if (submitSubdomainWiseAnswersMutation.isPending) return true;
+
+    const hasAnswers =
+      (answers && Object.keys(answers).length > 0) ||
+      (textAnswers && Object.keys(textAnswers).length > 0);
+
+    if (!hasAnswers) return true;
+
+    const hasAnsweredClassBasedQuestions = classBasedQuestions.some(
+      (q) => answers[q.questionId] || textAnswers[q.questionId],
+    );
+
+    const hasAnsweredSubjectQuestions = subjectObservationQuestions.some(
+      (q) => answers[q.questionId] || textAnswers[q.questionId],
+    );
+
+    if (hasAnsweredClassBasedQuestions) {
+      if (!selectedClass || !selectedSection) return true;
+      if (hasAnsweredSubjectQuestions && !selectedSubject) return true;
+    }
+
+    return false;
+  };
+
+  const totalAnswered = assessmentProgress.totalAnswer;
+  const totalQuestions = assessmentProgress.totalQuestions;
+
   // Reset selected class group if it becomes unavailable (no flag)
   useEffect(() => {
     if (selectedClassGroup && selectedSubdomain && currentTab) {
@@ -1789,11 +2017,18 @@ export function useSchoolVerification() {
     matchDownMD,
     navigate,
     location,
+    user,
     userId,
     userName,
     queryClient,
+    drawerOpen,
+    setDrawerOpen,
+    handleDrawerToggle,
+    handleLogout,
+    logoutMutation,
     currentLanguage,
     setCurrentLanguage,
+    handleLanguageChange,
     selectedDomain,
     setSelectedDomain,
     selectedSubdomain,
@@ -1822,8 +2057,27 @@ export function useSchoolVerification() {
     setExpandedQuestions,
     showSubmitConfirmation,
     setShowSubmitConfirmation,
+    showSubmitPreview: false,
+    submitPreviewData: null,
+    isLoadingSubmitPreview: false,
+    submitPreviewError: null,
+    submitPreviewAnswerCount: 0,
+    handleCloseSubmitPreview: () => {},
+    handleConfirmSubmitPreview: () => {},
     selectedQuestionTab,
     setSelectedQuestionTab,
+    currentQuestionIndex,
+    setCurrentQuestionIndex,
+    flattenedQuestions,
+    currentQuestionEntry,
+    isFirstQuestionInSubdomain,
+    isLastQuestionInSubdomain,
+    nextSubdomainInfo,
+    getNextSubdomain,
+    handleNextQuestion,
+    handlePreviousQuestion,
+    handleGoToNextSubdomain,
+    isSaveAssessmentDisabled,
     selectedAssessmentId,
     setSelectedAssessmentId,
     chartDrilldownAssessmentId,
@@ -1835,6 +2089,9 @@ export function useSchoolVerification() {
     roleId,
     domainsData,
     isLoadingDomains,
+    isFetchingDomains,
+    isAssessmentDataLoading,
+    isAssessmentDataRefreshing,
     isErrorDomains,
     refetchDomains,
     allQuestionsData,
@@ -1861,11 +2118,27 @@ export function useSchoolVerification() {
     subjects,
     assessments,
     selectedAssessment,
+    assessmentTheme,
     domains,
     isPublished,
     assessmentProgress,
     endDate,
     isSubmitted,
+    isEndDatePassed,
+    isReadOnly,
+    mandatoryEvidenceProgress,
+    allMandatoryEvidenceComplete,
+    allAssessmentsMandatoryEvidenceProgress,
+    allAssessmentsMandatoryEvidenceComplete,
+    allAssessmentsSubmitted,
+    allAssessmentsAnswersComplete,
+    allAssessmentsComplete,
+    incompleteAssessments,
+    canSubmitAssessment,
+    isSubmittingAllAssessments,
+    handleSubdomainEvidenceProgressChange,
+    totalAnswered,
+    totalQuestions,
     sessionId,
     mapGroupRangeToApiFormat,
     getGroupFlagColor,
@@ -1912,6 +2185,7 @@ export function useSchoolVerification() {
     handleConfirmSubmit,
     allDomainsComplete,
     handleSubmit,
+    handleSubmitQuestion: handleSubmit,
     domainChartData,
     assessmentChartData,
     currentChartData,

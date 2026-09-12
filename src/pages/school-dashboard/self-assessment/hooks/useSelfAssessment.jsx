@@ -621,8 +621,9 @@ export function useSelfAssessment() {
     setSelectedDomain(null);
     setSelectedSubdomain(null);
   }, [hostelValue, selectedDomain]);
-  const isPublished =
-    selectedAssessment?.isPublished ?? domainsData?.isPublished ?? false;
+  const isPublished = Boolean(
+    selectedAssessment?.isPublished ?? domainsData?.isPublished ?? false,
+  );
   const endDate = selectedAssessment?.endDate ?? domainsData?.endDate ?? null;
   const isSubmitted = isAssessmentSubmitted(selectedAssessment);
   const sessionId =

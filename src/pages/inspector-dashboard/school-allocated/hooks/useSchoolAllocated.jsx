@@ -404,6 +404,12 @@ export function useSchoolAllocated() {
           schoolId: school.schoolId,
           schoolName: school.schoolName,
           schoolCode: school.schoolCode,
+          districtId: school.districtId,
+          districtName: school.districtName,
+          allocatedDate: school.allocatedDate,
+          pcStatus: school.pcStatus,
+          status: school.status,
+          isSubmitted: school.isSubmitted,
         },
       },
     });
